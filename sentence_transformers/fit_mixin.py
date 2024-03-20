@@ -10,6 +10,7 @@ import transformers
 import torch
 from torch import nn, Tensor
 from torch.optim import Optimizer
+from torch.utils.checkpoint import checkpoint
 from torch.utils.data import DataLoader
 from tqdm.autonotebook import trange
 from datasets import Dataset, DatasetDict
