@@ -644,6 +644,9 @@ class GradientCheckpointingMixin:
             self._gradient_checkpointing_func = gradient_checkpointing_func
             self.gradient_checkpointing = enable
             is_gradient_checkpointing_set = True
+            logger.debug(
+                f"Gradient checkpointing enabled for {self.__class.__name__}."
+            )
 
         for module in self.modules():
             if hasattr(module, "gradient_checkpointing"):
