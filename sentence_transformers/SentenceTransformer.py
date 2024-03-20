@@ -31,7 +31,7 @@ from .util import (
 )
 from .models import Transformer, Pooling, Normalize
 from .model_card_templates import ModelCardTemplate
-from .fit_mixin import FitMixin
+from .fit_mixin import FitMixin, GradientCheckpointingMixin
 from . import __version__
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     pass
 
 
-class SentenceTransformer(nn.Sequential, FitMixin):
+class SentenceTransformer(nn.Sequential, FitMixin, GradientCheckpointingMixin):
     """
     Loads or creates a SentenceTransformer model that can be used to map sentences / text to embeddings.
 
@@ -79,6 +79,7 @@ class SentenceTransformer(nn.Sequential, FitMixin):
         revision: Optional[str] = None,
         token: Optional[Union[bool, str]] = None,
         use_auth_token: Optional[Union[bool, str]] = None,
+        supports_gradient_checkpointing: bool = False,
     ):
         # Note: self._load_sbert_model can also update `self.prompts` and `self.default_prompt_name`
         self.prompts = prompts or {}
@@ -96,7 +97,7 @@ class SentenceTransformer(nn.Sequential, FitMixin):
                     "`token` and `use_auth_token` are both specified. Please set only the argument `token`."
                 )
             token = use_auth_token
-
+        self.supports_gradient_checkpointing = supports_gradient_checkpointing
         if cache_folder is None:
             cache_folder = os.getenv("SENTENCE_TRANSFORMERS_HOME")
 

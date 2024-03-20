@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import functools
+import inspect
 from pathlib import Path
 import shutil
 from typing import Any, List, Dict, Tuple, Iterable, Type, Callable, Optional, TYPE_CHECKING
@@ -594,3 +596,95 @@ class FitMixin:
             if len(old_checkpoints) > checkpoint_save_total_limit:
                 old_checkpoints = sorted(old_checkpoints, key=lambda x: x["step"])
                 shutil.rmtree(old_checkpoints[0]["path"])
+
+
+class GradientCheckpointingMixin:
+    def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):
+        """
+        Activates gradient checkpointing for the current model.
+
+        Note that in other frameworks this feature can be referred to as "activation checkpointing" or "checkpoint
+        activations".
+
+        We pass the `__call__` method of the modules instead of `forward` because `__call__` attaches all the hooks of
+        the module. https://discuss.pytorch.org/t/any-different-between-model-input-and-model-forward-input/3690/2
+
+        Args:
+            gradient_checkpointing_kwargs (dict, *optional*):
+                Additional keyword arguments passed along to the `torch.utils.checkpoint.checkpoint` function.
+        """
+        if not self.supports_gradient_checkpointing:
+            raise ValueError(f"{self.__class__.__name__} does not support gradient checkpointing.")
+
+        if gradient_checkpointing_kwargs is None:
+            gradient_checkpointing_kwargs = {"use_reentrant": True}
+
+        gradient_checkpointing_func = functools.partial(checkpoint, **gradient_checkpointing_kwargs)
+
+        # For old GC format (transformers < 4.35.0) for models that live on the Hub
+        # we will fall back to the overwritten `_set_gradient_checkpointing` method
+        _is_using_old_format = "value" in inspect.signature(self._set_gradient_checkpointing).parameters
+
+        if not _is_using_old_format:
+            self._set_gradient_checkpointing(enable=True, gradient_checkpointing_func=gradient_checkpointing_func)
+        else:
+            self.apply(functools.partial(self._set_gradient_checkpointing, value=True))
+            logger.warn(
+                "You are using an old version of the checkpointing format that is deprecated (We will also silently ignore `gradient_checkpointing_kwargs` in case you passed it)."
+                "Please update to the new format on your modeling file. To use the new format, you need to completely remove the definition of the method `_set_gradient_checkpointing` in your model."
+            )
+
+    def _set_gradient_checkpointing(self, enable: bool = True, gradient_checkpointing_func: Callable = checkpoint):
+        is_gradient_checkpointing_set = False
+
+        # Apply it on the top-level module in case the top-level modules supports it
+        # for example, LongT5Stack inherits from `PreTrainedModel`.
+        if hasattr(self, "gradient_checkpointing"):
+            self._gradient_checkpointing_func = gradient_checkpointing_func
+            self.gradient_checkpointing = enable
+            is_gradient_checkpointing_set = True
+
+        for module in self.modules():
+            if hasattr(module, "gradient_checkpointing"):
+                module._gradient_checkpointing_func = gradient_checkpointing_func
+                module.gradient_checkpointing = enable
+                is_gradient_checkpointing_set = True
+
+        if not is_gradient_checkpointing_set:
+            raise ValueError(
+                f"{self.__class__.__name__} is not compatible with gradient checkpointing. Make sure all the architecture support it by setting a boolean attribute"
+                " `gradient_checkpointing` to modules of the model that uses checkpointing."
+            )
+
+    def gradient_checkpointing_disable(self):
+        """
+        Deactivates gradient checkpointing for the current model.
+
+        Note that in other frameworks this feature can be referred to as "activation checkpointing" or "checkpoint
+        activations".
+        """
+        if self.supports_gradient_checkpointing:
+            # For old GC format (transformers < 4.35.0) for models that live on the Hub
+            # we will fall back to the overwritten `_set_gradient_checkpointing` methid
+            _is_using_old_format = "value" in inspect.signature(self._set_gradient_checkpointing).parameters
+            if not _is_using_old_format:
+                self._set_gradient_checkpointing(enable=False)
+            else:
+                logger.warn(
+                    "You are using an old version of the checkpointing format that is deprecated (We will also silently ignore `gradient_checkpointing_kwargs` in case you passed it)."
+                    "Please update to the new format on your modeling file. To use the new format, you need to completely remove the definition of the method `_set_gradient_checkpointing` in your model."
+                )
+                self.apply(functools.partial(self._set_gradient_checkpointing, value=False))
+
+        if getattr(self, "_hf_peft_config_loaded", False):
+            self.disable_input_require_grads()
+
+    @property
+    def is_gradient_checkpointing(self) -> bool:
+        """
+        Whether gradient checkpointing is activated for this model or not.
+
+        Note that in other frameworks this feature can be referred to as "activation checkpointing" or "checkpoint
+        activations".
+        """
+        return any(hasattr(m, "gradient_checkpointing") and m.gradient_checkpointing for m in self.modules())
