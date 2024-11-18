@@ -10,7 +10,7 @@ from sentence_transformers import util
 from sentence_transformers.SentenceTransformer import SentenceTransformer
 
 
-class SigLIPLoss(nn.Module):
+class SigLiPLoss(nn.Module):
     def __init__(
         self,
         model: SentenceTransformer,
