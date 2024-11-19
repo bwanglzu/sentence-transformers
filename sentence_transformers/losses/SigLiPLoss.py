@@ -10,7 +10,7 @@ from sentence_transformers import util
 from sentence_transformers.SentenceTransformer import SentenceTransformer
 
 
-class SigLIPLoss(nn.Module):
+class SigLiPLoss(nn.Module):
     def __init__(self, model: SentenceTransformer, temperature: float = 1.0, similarity_fct=util.cos_sim) -> None:
         """
         SigLIP contrastive loss with learnable temperature parameter.
