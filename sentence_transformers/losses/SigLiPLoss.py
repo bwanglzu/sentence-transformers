@@ -10,27 +10,19 @@ from sentence_transformers import util
 from sentence_transformers.SentenceTransformer import SentenceTransformer
 
 
-class SigLiPLoss(nn.Module):
-    def __init__(
-        self,
-        model: SentenceTransformer,
-        temperature: float = 1.0,
-        similarity_fct=util.cos_sim,
-        bidirectional: bool = False,
-    ) -> None:
+class SigLIPLoss(nn.Module):
+    def __init__(self, model: SentenceTransformer, temperature: float = 1.0, similarity_fct=util.cos_sim) -> None:
         """
-        SigLIP-inspired contrastive loss for sentence transformers.
+        SigLIP contrastive loss with learnable temperature parameter.
         Args:
             model: SentenceTransformer model
-            temperature: Temperature scaling for logits
+            temperature: Initial temperature value
             similarity_fct: Similarity function between embeddings
-            bidirectional: if set to `True`, will average loss from `q` to `d` and `d` to `q`.
         """
         super().__init__()
         self.model = model
-        self.temperature = temperature
+        self.temperature = nn.Parameter(torch.tensor(temperature))
         self.similarity_fct = similarity_fct
-        self.bidirectional = bidirectional
 
     def forward(self, sentence_features: Iterable[dict], labels: Any = None) -> torch.Tensor:
         # Get embeddings for each input
@@ -38,22 +30,23 @@ class SigLiPLoss(nn.Module):
         embeddings_a = reps[0]
         embeddings_b = torch.cat(reps[1:])
 
+        # Compute cosine similarities
         similarities = self.similarity_fct(embeddings_a, embeddings_b)
 
-        logits = similarities / self.temperature
+        logits = similarities / torch.abs(self.temperature)
 
+        # Compute sigmoid-based loss
         targets = torch.arange(len(logits), device=logits.device)
-        # Bo: this is bidirectinoal
         loss_a = nn.functional.binary_cross_entropy_with_logits(
             logits, torch.eye(len(logits), device=logits.device)[targets]
         )
-        if self.bidirectional:
-            loss_b = nn.functional.binary_cross_entropy_with_logits(
-                logits.t(), torch.eye(len(logits), device=logits.device)[targets]
-            )
-            return (loss_a + loss_b) / 2
-        else:
-            return loss_a
+
+        # Symmetric loss
+        loss_b = nn.functional.binary_cross_entropy_with_logits(
+            logits.t(), torch.eye(len(logits), device=logits.device)[targets]
+        )
+
+        return (loss_a + loss_b) / 2
 
     def get_config_dict(self) -> dict:
-        return {"temperature": self.temperature, "similarity_fct": self.similarity_fct.__name__}
+        return {"temperature": self.temperature.item(), "similarity_fct": self.similarity_fct.__name__}
