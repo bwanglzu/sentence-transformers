@@ -42,6 +42,7 @@ class ReasoningGuidedRankingLoss(nn.Module):
             reasoning = embeddings[2]  # (B, D)
             reasoning_embed = self.reasoning_transform(reasoning)
             positives = positives + self.reasoning_transform(reasoning_embed)  # Modify positive with reasoning context
+            anchors = anchors + self.reasoning_transform(reasoning_embed)  # Modify positive with reasoning context
 
         candidates = torch.cat([positives] + embeddings[3:], dim=0)  # Include negatives if available
 
