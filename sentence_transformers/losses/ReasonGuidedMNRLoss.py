@@ -24,9 +24,12 @@ class ReasoningGuidedRankingLoss(nn.Module):
         self.cross_entropy_loss = nn.CrossEntropyLoss()
 
         # Transformation layer for reasoning influence
-        self.reasoning_transform = nn.Linear(
-            model.get_sentence_embedding_dimension(),
-            model.get_sentence_embedding_dimension(),
+        dim = model.get_sentence_embedding_dimension()
+        self.reasoning_transform = nn.Sequential(
+            nn.Linear(dim, dim),
+            nn.ReLU(),
+            nn.Dropout(0.3),  # avoid train-inference mismatch
+            nn.LayerNorm(dim),
         )
 
     def forward(self, sentence_features: Iterable[dict[str, Tensor]], labels: Tensor) -> Tensor:
@@ -38,7 +41,7 @@ class ReasoningGuidedRankingLoss(nn.Module):
         if len(embeddings) > 2:  # Reasoning is provided
             reasoning = embeddings[2]  # (B, D)
             reasoning_embed = self.reasoning_transform(reasoning)
-            anchors = anchors + reasoning_embed  # Modify anchors with reasoning context
+            positives = positives + self.reasoning_transform(reasoning_embed)  # Modify positive with reasoning context
 
         candidates = torch.cat([positives] + embeddings[3:], dim=0)  # Include negatives if available
 
