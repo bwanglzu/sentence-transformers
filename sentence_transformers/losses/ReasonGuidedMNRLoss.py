@@ -27,9 +27,9 @@ class ReasoningGuidedRankingLoss(nn.Module):
         dim = model.get_sentence_embedding_dimension()
         self.reasoning_transform = nn.Sequential(
             nn.Linear(dim, dim),
-            nn.ReLU(),
-            nn.Dropout(0.3),  # avoid train-inference mismatch
-            nn.LayerNorm(dim),
+            # nn.ReLU(),
+            # nn.Dropout(0.3),  # avoid train-inference mismatch
+            # nn.LayerNorm(dim),
         )
 
     def forward(self, sentence_features: Iterable[dict[str, Tensor]], labels: Tensor) -> Tensor:
